@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>事故处置情境编排与演练</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🚒 事故处置情境编排台</div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="trainee">学员演练</button>
+      <button class="tab" data-tab="trainer">培训师编排</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============ 学员视图 ============ -->
+    <section id="view-trainee">
+      <div id="trainee-home">
+        <div class="section-head">
+          <h2>可演练情境</h2>
+          <button class="btn ghost" id="btn-reload-published">刷新</button>
+        </div>
+        <div id="published-list" class="card-grid"></div>
+
+        <h2 class="mt">继续已有演练 / 复盘分叉</h2>
+        <div class="muted" style="margin:-6px 0 10px">培训师可凭会话码打开任意会话（含已结局），在会话页右侧「复盘分叉」中选择历史步创建分支；分支沿用冻结版本，原会话不变。</div>
+        <div class="inline-row">
+          <input id="trainee-name" class="input" placeholder="学员姓名（可选，仅开始新演练时记录）" maxlength="100" />
+        </div>
+        <div class="inline-row mt" style="margin-top:8px">
+          <input id="resume-code" class="input" placeholder="输入会话码（10 位）" maxlength="10" />
+          <button class="btn" id="btn-resume">继续</button>
+        </div>
+        <div id="session-list" class="mt"></div>
+      </div>
+
+      <div id="trainee-session" hidden>
+        <div class="session-bar">
+          <div>
+            <div class="muted" id="ses-scenario-title"></div>
+            <div class="ses-meta">
+              会话码 <code id="ses-code"></code>
+              · 冻结版本 <b id="ses-version"></b>
+              · 当前第 <b id="ses-step">0</b> 步
+              · 累计得分 <b id="ses-score">0</b>
+              <span id="ses-lineage"></span>
+            </div>
+          </div>
+          <button class="btn ghost" id="btn-exit-session">返回列表</button>
+        </div>
+
+        <div id="ses-banner" class="banner hidden"></div>
+
+        <div class="session-grid">
+          <div class="col-main">
+            <div class="card" id="node-card">
+              <div class="node-kick" id="node-kick"></div>
+              <h3 id="node-title"></h3>
+              <p class="narrative" id="node-narrative"></p>
+            </div>
+            <div class="card">
+              <h4>你的选择</h4>
+              <div id="option-list"></div>
+            </div>
+          </div>
+          <div class="col-side">
+            <div class="card">
+              <h4>现场状态</h4>
+              <div id="state-list"></div>
+            </div>
+            <div class="card">
+              <h4>已走路径</h4>
+              <ol id="path-list" class="path-list"></ol>
+            </div>
+            <div class="card fork-card">
+              <h4>🌿 复盘分叉（培训师）</h4>
+              <p class="hint">从本会话某个历史步创建可继续选择的分支。分支沿用当前冻结版本，保留分歧步之前的路径与现场状态；原会话与其它分支不变。结局步不可分叉。</p>
+              <div class="field">
+                <label>分歧步号（从第 0 步起）</label>
+                <select id="fork-step-select" class="input sm"></select>
+              </div>
+              <input id="fork-name" class="input sm" maxlength="100" placeholder="分支备注名（可选）" style="margin:6px 0" />
+              <button class="btn primary" id="btn-fork" style="width:100%">从此步创建分支</button>
+            </div>
+            <div class="card">
+              <h4>来源与分支对照</h4>
+              <div id="lineage-box"><div class="muted">加载中…</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 培训师视图 ============ -->
+    <section id="view-trainer" hidden>
+      <div id="trainer-home">
+        <div class="section-head">
+          <h2>我的情境</h2>
+          <button class="btn primary" id="btn-new-scenario">＋ 新建情境</button>
+        </div>
+        <div id="scenario-list" class="card-grid"></div>
+      </div>
+
+      <div id="trainer-editor" hidden>
+        <div class="editor-bar">
+          <button class="btn ghost" id="btn-back-list">← 返回列表</button>
+          <div class="editor-title-wrap">
+            <input id="editor-title" class="input title-input" placeholder="情境标题" />
+            <span class="muted" id="editor-version-label"></span>
+          </div>
+          <div class="editor-actions">
+            <button class="btn" id="btn-analyze">发布前检查</button>
+            <button class="btn" id="btn-save-draft">保存草稿</button>
+            <button class="btn primary" id="btn-publish">发布新版本</button>
+          </div>
+        </div>
+
+        <div id="editor-report" class="report hidden"></div>
+
+        <div class="editor-grid">
+          <div class="col-main">
+            <div class="card">
+              <div class="card-head">
+                <h4>情境节点</h4>
+                <label class="start-pick">起点
+                  <select id="start-select" class="input sm"></select>
+                </label>
+              </div>
+              <div id="node-editor-list"></div>
+              <button class="btn dashed" id="btn-add-node">＋ 添加节点</button>
+            </div>
+          </div>
+          <div class="col-side">
+            <div class="card">
+              <h4>现场状态（布尔，至多 8 个）</h4>
+              <div id="state-editor-list"></div>
+              <button class="btn dashed" id="btn-add-state">＋ 添加状态</button>
+              <p class="hint">选项可以“要求某状态为是/否”作为条件，并在选择后把状态“置为是/否”。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
