@@ -308,6 +308,34 @@ code { background: #eef2f6; padding: 1px 6px; border-radius: 4px; font-size: 12p
 .lg-path summary { cursor: pointer; font-size: 12px; color: var(--brand-dark); }
 .lg-path .path-list { margin-top: 6px; padding-left: 18px; }
 
+/* ---------- 处置覆盖报告 ---------- */
+.sc-card-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cov-stats { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.cov-stat { text-align: center; min-width: 64px; }
+.cov-num { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.cov-stat.covered .cov-num { color: var(--ok); }
+.cov-stat.uncovered .cov-num { color: var(--err); }
+.cov-bar-wrap { flex: 1; min-width: 160px; }
+.cov-bar { height: 10px; background: #e7ecf2; border-radius: 999px; overflow: hidden; margin-bottom: 4px; }
+.cov-bar-fill { height: 100%; background: linear-gradient(90deg, var(--brand), var(--ok)); border-radius: 999px; transition: width .3s; }
+
+.cov-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cov-table th { background: #f7f9fc; font-weight: 600; color: var(--muted); font-size: 12px; text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.cov-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.cov-row-uncovered { background: #fffdfa; }
+.cov-row-uncovered:hover { background: #fef5e7; }
+.cov-row-covered { background: #fbfdfb; }
+.cov-row-covered:hover { background: #f2f9f4; }
+.cov-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.cov-pill.ok { background: var(--ok-bg); color: var(--ok); }
+.cov-pill.no { background: var(--err-bg); color: var(--err); }
+.cov-states { max-width: 280px; }
+.cov-state { display: inline-block; font-size: 12px; margin: 1px 4px 1px 0; padding: 0 6px; border-radius: 4px; background: #f2f4f7; color: var(--muted); }
+.cov-state.yes { background: var(--ok-bg); color: var(--ok); }
+.cov-state.no { background: #f2f4f7; color: var(--muted); }
+.cov-fam { text-align: center; }
+.cov-fam .muted { font-size: 11px; line-height: 1.4; word-break: break-all; }
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed;

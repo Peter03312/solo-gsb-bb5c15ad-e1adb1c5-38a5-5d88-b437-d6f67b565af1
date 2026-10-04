@@ -16,6 +16,7 @@ const {
   decodeKey,
 } = require('./scenario');
 const { buildSnapshot, performMove, forkSession, loadLineage, computeTotalScore } = require('./session');
+const { buildCoverageReport } = require('./coverage');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'app.db');
@@ -238,6 +239,32 @@ app.get('/api/scenarios/:id/versions/:version', (req, res) => {
     .get(req.params.id, parseInt(req.params.version, 10));
   if (!row) return res.status(404).json({ error: '版本不存在' });
   res.json(JSON.parse(row.content));
+});
+
+// 培训师：处置覆盖报告（某冻结版本从初态可达的「节点 × 进入时现场状态 × 可选选项」覆盖情况）。
+// 查询参数 ?uncoveredOnly=1 只返回未覆盖项（汇总总数始终给出）。
+// 版本不存在 → 404；冻结内容 / 会话路径损坏 → 500，且不返回部分统计。
+app.get('/api/scenarios/:id/versions/:version/coverage', (req, res) => {
+  const raw = String(req.params.version);
+  if (!/^\d+$/.test(raw) || parseInt(raw, 10) < 1) {
+    return res.status(400).json({ errorCode: 'VERSION_INVALID', error: '版本号必须是正整数' });
+  }
+  const version = parseInt(raw, 10);
+  const uncoveredOnly = ['1', 'true', 'yes'].includes(String(req.query.uncoveredOnly || '').toLowerCase());
+  const result = buildCoverageReport(db, {
+    scenarioId: req.params.id,
+    version,
+    uncoveredOnly,
+  });
+  if (!result.ok) {
+    return res.status(result.status).json({
+      errorCode: result.errorCode,
+      error: result.error,
+      ...(result.validationErrors ? { validationErrors: result.validationErrors } : {}),
+      ...(result.reason ? { reason: result.reason, step: result.step, sessionCode: result.sessionCode } : {}),
+    });
+  }
+  res.json({ ok: true, ...result.report });
 });
 
 // 开始新会话：绑定最新发布版

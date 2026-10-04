@@ -54,7 +54,13 @@ $$('.tab').forEach((tab) => {
     $('#view-trainee').hidden = which !== 'trainee';
     $('#view-trainer').hidden = which !== 'trainer';
     if (which === 'trainee') { loadPublished(); loadSessionList(); }
-    if (which === 'trainer') loadScenarios();
+    if (which === 'trainer') {
+      // 切回培训师页时统一回到情境列表（覆盖报告 / 编辑器均为子视图）
+      $('#trainer-coverage').hidden = true;
+      $('#trainer-editor').hidden = true;
+      $('#trainer-home').hidden = false;
+      loadScenarios();
+    }
   });
 });
 
@@ -444,11 +450,22 @@ async function loadScenarios() {
           : '<span class="badge draft">未发布</span>'}
         会话 ${s.session_count} 个 · 更新于 ${fmtTime(s.updated_at)}
       </div>
-      <div style="margin-top:10px"><span class="btn">编排 / 查看</span></div>
+      <div style="margin-top:10px" class="sc-card-actions">
+        <span class="btn">编排 / 查看</span>
+        ${s.current_version > 0
+          ? `<button class="btn" data-coverage="${esc(s.id)}" title="查看已发布版本的处置覆盖情况">📊 处置覆盖报告</button>`
+          : ''}
+      </div>
     </div>`).join('');
 }
 
 $('#scenario-list').addEventListener('click', (e) => {
+  const covBtn = e.target.closest('[data-coverage]');
+  if (covBtn) {
+    e.stopPropagation();
+    openCoverage(covBtn.dataset.coverage);
+    return;
+  }
   const card = e.target.closest('[data-open]');
   if (card) openEditor(card.dataset.open);
 });
@@ -491,6 +508,7 @@ async function openEditor(id) {
 
 function showEditor() {
   $('#trainer-home').hidden = true;
+  $('#trainer-coverage').hidden = true;
   $('#trainer-editor').hidden = false;
   $('#editor-report').className = 'report hidden';
   renderEditor();
@@ -877,6 +895,137 @@ function renderReport(report, opts = {}) {
       </div>`).join('')}
     ${warnings.map((w) => `<div class="warning-item">⚠ ${esc(w.message)}</div>`).join('')}`;
 }
+
+// ====================== 培训师端：处置覆盖报告 ======================
+
+let coverage = null; // { scenarioId, versions:[{version}], version, report, onlyUncovered }
+
+async function openCoverage(scenarioId) {
+  let detail;
+  try {
+    detail = await api(`/api/scenarios/${scenarioId}`);
+  } catch (err) { toast(err.message, 'err'); return; }
+  if (!detail.versions || !detail.versions.length) {
+    toast('该情境尚未发布任何版本，无覆盖报告', 'err');
+    return;
+  }
+  // versions 按版本号倒序返回；默认看最新发布版
+  const versions = detail.versions.map((v) => v.version).sort((a, b) => b - a);
+  coverage = {
+    scenarioId,
+    scenarioTitle: detail.title,
+    versions,
+    version: versions[0],
+    report: null,
+    onlyUncovered: false,
+  };
+  $('#trainer-home').hidden = true;
+  $('#trainer-editor').hidden = true;
+  $('#trainer-coverage').hidden = false;
+  $('#coverage-title').textContent = `处置覆盖报告 · ${detail.title}`;
+  $('#coverage-version').innerHTML = versions.map((v) =>
+    `<option value="${v}"${v === coverage.version ? ' selected' : ''}>v${v}</option>`).join('');
+  $('#coverage-only-uncovered').checked = false;
+  await loadCoverageReport();
+}
+
+async function loadCoverageReport() {
+  if (!coverage) return;
+  const box = $('#coverage-items');
+  $('#coverage-summary').className = 'report hidden';
+  box.innerHTML = '<div class="muted">报告加载中…</div>';
+  try {
+    const qs = coverage.onlyUncovered ? '?uncoveredOnly=1' : '';
+    const rep = await api(`/api/scenarios/${coverage.scenarioId}/versions/${coverage.version}/coverage${qs}`);
+    coverage.report = rep;
+    renderCoverage();
+  } catch (err) {
+    // 版本不存在 / 冻结内容或会话路径损坏：明确报错，不展示任何部分统计
+    box.innerHTML = '';
+    const s = $('#coverage-summary');
+    s.className = 'report err';
+    s.innerHTML = `
+      <div class="r-title">❌ 无法生成覆盖报告</div>
+      <div class="problem"><span class="p-kind">${esc(err.data && err.data.errorCode ? err.data.errorCode : 'ERROR')}</span>
+      <div>${esc(err.message)}</div>
+      ${err.data && err.data.reason ? `<div class="muted" style="margin-top:4px">损坏位置：${esc(err.data.reason)}${err.data.sessionCode ? `（会话 ${esc(err.data.sessionCode)}）` : ''}${err.data.step ? `，第 ${err.data.step} 步` : ''}</div>` : ''}</div>`;
+    $('#coverage-sub').textContent = '';
+  }
+}
+
+function renderCoverage() {
+  const rep = coverage.report;
+  if (!rep) return;
+  const { total, covered, uncovered } = rep.summary;
+  const pct = total ? Math.round((covered / total) * 100) : 0;
+  $('#coverage-sub').textContent =
+    `共统计 ${rep.scope.sessionCount} 个绑定 v${rep.version} 的会话、${rep.scope.familyCount} 个会话家族 · 报告生成于 ${fmtTime(rep.generatedAt)}`;
+
+  const s = $('#coverage-summary');
+  s.className = 'report ok';
+  s.innerHTML = `
+    <div class="r-title">覆盖汇总（${coverage.onlyUncovered ? '仅未覆盖筛选' : '全部覆盖项'}）</div>
+    <div class="cov-stats">
+      <div class="cov-stat"><div class="cov-num">${total}</div><div class="muted">覆盖项总数</div></div>
+      <div class="cov-stat covered"><div class="cov-num">${covered}</div><div class="muted">已覆盖</div></div>
+      <div class="cov-stat uncovered"><div class="cov-num">${uncovered}</div><div class="muted">未覆盖</div></div>
+      <div class="cov-bar-wrap">
+        <div class="cov-bar"><div class="cov-bar-fill" style="width:${pct}%"></div></div>
+        <div class="muted">覆盖率 ${pct}%</div>
+      </div>
+    </div>
+    <div class="muted" style="margin-top:8px">${esc(rep.scope.rule)}</div>`;
+
+  const box = $('#coverage-items');
+  const items = rep.items;
+  if (!items.length) {
+    box.innerHTML = '<div class="muted">🎉 当前筛选下没有未覆盖项，该版本所有可达处置都已被至少一个会话家族练到。</div>';
+    return;
+  }
+  box.innerHTML = `
+    <table class="cov-table">
+      <thead><tr>
+        <th style="width:54px">状态</th><th>进入节点</th><th>进入时现场状态</th>
+        <th>可选选项（处置）</th><th>跳转</th><th style="width:120px">覆盖家族数</th>
+      </tr></thead>
+      <tbody>
+        ${items.map((it) => `
+          <tr class="${it.covered ? 'cov-row-covered' : 'cov-row-uncovered'}">
+            <td>${it.covered
+              ? '<span class="cov-pill ok">已覆盖</span>'
+              : '<span class="cov-pill no">未覆盖</span>'}</td>
+            <td><b>${esc(it.nodeTitle)}</b><div class="muted">${esc(it.nodeId)}</div></td>
+            <td class="cov-states">${it.states.map((x) =>
+              `<span class="cov-state ${x.value ? 'yes' : 'no'}">${esc(x.name)}：${x.value ? '是' : '否'}</span>`).join('')}</td>
+            <td><b>${esc(it.optionLabel)}</b><div class="muted">${esc(it.optionId)}</div></td>
+            <td class="muted">→ ${esc(it.toNodeTitle)}</td>
+            <td class="cov-fam">
+              <b class="${it.familyCount > 0 ? 'score-pos' : 'score-neg'}">${it.familyCount}</b>
+              ${it.familyRootCodes.length ? `<div class="muted" title="覆盖该项的家族根会话码">${it.familyRootCodes.map(esc).join('、')}</div>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+$('#btn-coverage-back').addEventListener('click', () => {
+  coverage = null;
+  $('#trainer-coverage').hidden = true;
+  $('#trainer-home').hidden = false;
+  loadScenarios();
+});
+$('#coverage-version').addEventListener('change', async () => {
+  if (!coverage) return;
+  coverage.version = parseInt($('#coverage-version').value, 10);
+  coverage.onlyUncovered = $('#coverage-only-uncovered').checked;
+  await loadCoverageReport();
+});
+$('#btn-coverage-reload').addEventListener('click', loadCoverageReport);
+$('#coverage-only-uncovered').addEventListener('change', async () => {
+  if (!coverage) return;
+  coverage.onlyUncovered = $('#coverage-only-uncovered').checked;
+  await loadCoverageReport();
+});
 
 // ====================== 初始化 ======================
 

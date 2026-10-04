@@ -104,6 +104,39 @@
         <div id="scenario-list" class="card-grid"></div>
       </div>
 
+      <div id="trainer-coverage" hidden>
+        <div class="editor-bar">
+          <button class="btn ghost" id="btn-coverage-back">← 返回列表</button>
+          <div class="editor-title-wrap">
+            <div id="coverage-title" class="title-input" style="font-size:16px;font-weight:600">处置覆盖报告</div>
+            <span class="muted" id="coverage-sub"></span>
+          </div>
+          <div class="editor-actions">
+            <label class="start-pick">冻结版本
+              <select id="coverage-version" class="input sm"></select>
+            </label>
+            <button class="btn" id="btn-coverage-reload">刷新报告</button>
+          </div>
+        </div>
+
+        <div id="coverage-summary" class="report hidden"></div>
+
+        <div class="card">
+          <div class="card-head" style="margin-bottom:10px">
+            <h4 style="margin:0">覆盖项明细</h4>
+            <label class="checkbox">
+              <input type="checkbox" id="coverage-only-uncovered" /> 只看未覆盖项
+            </label>
+          </div>
+          <div class="muted" style="margin-bottom:10px">
+            覆盖项 = 该冻结版本从初态可达的「节点 × 进入时现场状态 × 可选选项」组合。
+            覆盖家族数 = 绑定该版本、在已完成选择中练到过该项的会话家族（原始会话及其多级分支算同一家族）个数；
+            同一家族对同一项至多算一次，进行中会话只计已完成步骤，其它版本不混入。
+          </div>
+          <div id="coverage-items"></div>
+        </div>
+      </div>
+
       <div id="trainer-editor" hidden>
         <div class="editor-bar">
           <button class="btn ghost" id="btn-back-list">← 返回列表</button>
