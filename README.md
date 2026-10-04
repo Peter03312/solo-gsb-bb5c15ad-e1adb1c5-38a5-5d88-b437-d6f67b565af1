@@ -13,6 +13,7 @@
 - 每步选择必须携带**当前步号**；步号过期/重复、条件不满足、选项不存在等情况一律返回**原因和现状**，且不推进会话
 - **培训师复盘分叉**：可凭「源会话码 + 分歧步号 + 所见源当前步号」，从任意历史局面创建**可继续选择的分支**；分支沿用源会话绑定的冻结版本，保留分歧步之前的路径与该步现场状态，原会话与其它分支不变；已结束会话也可从其此前的非结局步分叉（结局步不得分叉），分支还可再次分叉
 - **选项评分**：培训师可为每个处置选项填写 **-10 至 10 的整数分值**与**评分说明**（留空按 0 分）；规则随版本冻结。学员每次有效选择后立即看到**本步得分、说明与累计分**；过期/重复/条件不符的选择不计分；分叉继承分歧前得分；历史会话按其绑定版本计算，旧版本无评分字段时各步按 0 分处理
+- **处置覆盖报告**：培训师可针对任一**已发布冻结版本**查看覆盖情况——以该版本从初态可达的「**节点 × 进入时现场状态 × 可选选项**」组合为覆盖项，给出**总数 / 已覆盖 / 未覆盖**与逐项明细，可一键**只看未覆盖项**，方便找到学员还没练到的处置
 - 草稿中的**无效引用**（不存在的状态/目标节点）与**矛盾条件**（同一状态同时要求是和否）在保存时即被拒绝；**非整数或越界分值**同样在保存时拒绝
 
 ---
@@ -110,6 +111,20 @@ npm start
    - **发布前检查**：只检查不保存，查看死路/无限循环的可复现路径；
    - **发布新版本**：完整检查通过后，把当前草稿冻结为 `v+1`。已有进行中的会话不受影响，新会话走新版本。
 6. 删除仍被选项条件/变更引用的状态时，界面会拦截并提示引用位置。
+7. **处置覆盖报告**（“我的情境”卡片上的「📊 处置覆盖报告」，或编辑器顶部同名按钮）：
+   - 先在右上角选择要查看的**冻结版本**（默认最新发布版）；
+   - 顶部展示**覆盖项总数、已覆盖数、未覆盖数**，以及纳入统计的会话数/演练家族数；
+   - 明细表逐行给出**进入时现场状态、所在节点、可选选项（处置动作）与覆盖家族数**（未覆盖项红色高亮，并列出贡献覆盖的家族根会话码）；
+   - 勾选「**只看未覆盖项**」可快速聚焦学员还没练到的处置组合；
+   - 统计严格以该冻结版本为准：版本不存在、冻结内容或任一会话路径损坏时页面明确报错，且不展示部分统计。
+
+### 处置覆盖报告的统计口径
+
+- **覆盖项**：对所选冻结版本，复用发布前的状态空间枚举，从「起点 + 初始状态」出发，取每个**可达的非结局局面**（节点 + 进入时现场状态）下**条件满足、确实可选的每个选项**，组成一个覆盖项；结局局面没有可选项，不计入。
+- **只按已完成选择统计**：覆盖来自会话 `path` 中已提交成功的步骤；**进行中会话只计已完成步骤**，其当前停留、尚未提交的局面不计。
+- **按演练家族去重**：同一 `root_code` 家族（原始会话与其全部多级分支）对同一覆盖项**至多贡献一次**。分支从源会话继承的路径前缀因此**不会被重复累计**；家族内任一会话（含多级分支的分支）练到过即算该家族覆盖，明细中的“覆盖家族数”是去重后的家族数，不是会话数。
+- **版本隔离**：只统计 `scenario_id + version` 完全匹配本冻结版本的会话；更旧/更新版本的会话**不混入**，发布新版本不改变历史版本的报告。
+- **全有或全无**：冻结版本 JSON 无法解析、结构损坏（无效引用等）、不再满足发布时的可达性不变量（死路/可无限循环），或任一会话的已存路径与该版本冻结规则严格重放不一致（步号、节点、选项、条件、状态掩码、结局状态对不上）时，返回 `VERSION_CONTENT_CORRUPT` / `SESSION_PATH_CORRUPT` 等明确错误，**不返回部分统计**。
 
 ### 学员（“学员演练”页）
 
@@ -192,6 +207,7 @@ npm start
 | PUT | `/api/scenarios/:id/draft` | 保存草稿（无效引用/矛盾条件拒绝） |
 | POST | `/api/scenarios/:id/analyze` | 发布前检查（可带未保存草稿） |
 | POST | `/api/scenarios/:id/publish` | 发布冻结新版本（检查不过返回 422 与可复现路径） |
+| GET | `/api/scenarios/:id/versions/:version/coverage` | **处置覆盖报告**（可加 `?uncovered=1` 只列未覆盖项；计数始终基于全量） |
 
 ### 评分相关字段（随版本冻结，旧版本/旧会话自动按 0 分兜底）
 
@@ -309,6 +325,77 @@ curl -s -X POST localhost:8080/api/sessions/1a2b3c4d5e/fork \
 
 ---
 
+## 六之二、处置覆盖报告接口
+
+`GET /api/scenarios/:id/versions/:version/coverage`
+
+- `:version` 必须是已发布（已冻结）的版本号（≥1）；可加查询参数 `?uncovered=1`（或 `true`/`yes`），此时 `items` 只包含未覆盖项，但 `totals` 仍按全量覆盖项统计。
+- 统计口径见上文「处置覆盖报告的统计口径」：只统计绑定该版本的会话、按家族去重、进行中只计已完成步骤、其它版本不混入、损坏即整体失败。
+
+返回结构（节选）：
+
+```json
+{
+  "ok": true,
+  "scenarioId": "sc_…",
+  "scenarioTitle": "示例：车间可燃气体泄漏初期处置",
+  "version": 1,
+  "versionPublishedAt": "2026-10-04 02:53:17",
+  "totals": {
+    "total": 8,            // 覆盖项总数（可达局面 × 可选项）
+    "covered": 3,          // 已被至少一个家族覆盖的数量
+    "uncovered": 5,        // 未覆盖数量
+    "sessionsConsidered": 4,   // 绑定该版本的会话数（含进行中、零步）
+    "familiesConsidered": 2,   // 演练家族数（按 root_code 去重）
+    "familiesWithCoverage": 2
+  },
+  "items": [
+    {
+      "nodeId": "n_scene",
+      "nodeTitle": "查明泄漏点",
+      "entryStates": [ {"id":"power","name":"厂区电源已切断","value":true}, … ],
+      "option": {
+        "id": "o_evac", "label": "组织全员撤离至安全区并清点人数",
+        "conditions": [], "changes": [ … ],
+        "toNodeId": "n_command", "toNodeTitle": "安全区建立指挥点",
+        "score": 4, "scoreNote": "…"
+      },
+      "covered": true,
+      "coveredFamilies": 1,       // 覆盖该项的家族数（同家族原始/多级分支只算 1）
+      "familyCodes": ["9dcaff3c20"]  // 贡献覆盖的家族根会话码
+    }
+  ]
+}
+```
+
+调用示例：
+
+```bash
+# 查看 v1 的完整覆盖报告
+curl -s localhost:8080/api/scenarios/sc_14f5505a2f47a3a3/versions/1/coverage | jq '.totals'
+# -> { total: 8, covered: 0, uncovered: 8, sessionsConsidered: 0, … }
+
+# 只取未覆盖项（totals 仍是全量计数），便于脚本驱动补练
+curl -s 'localhost:8080/api/scenarios/sc_14f5505a2f47a3a3/versions/1/coverage?uncovered=1' \
+  | jq '.items[] | {node: .nodeTitle, states: [.entryStates[] | select(.value).name], action: .option.label}'
+
+# 用 Node 取报告（等价的 HTTP 调用）
+node -e 'fetch("http://localhost:8080/api/scenarios/sc_14f5505a2f47a3a3/versions/1/coverage")
+  .then(r=>r.json()).then(r=>console.log(`${r.totals.covered}/${r.totals.total} 已覆盖，未覆盖 ${r.totals.uncovered} 项`))'
+```
+
+错误响应（**不返回任何 items/部分统计**）：
+
+| 情况 | HTTP / errorCode |
+| --- | --- |
+| 版本号不是 ≥1 的整数 | `400 VERSION_INVALID` |
+| 情境不存在 | `404 SCENARIO_NOT_FOUND` |
+| 该版本未发布/不存在 | `404 VERSION_NOT_FOUND` |
+| 冻结内容无法解析、结构损坏或不再满足发布不变量（死路/可无限循环） | `500 VERSION_CONTENT_CORRUPT` |
+| 某绑定会话的路径与冻结规则重放不一致（步号/节点/选项/条件/状态/结局对不上） | `500 SESSION_PATH_CORRUPT`（`detail.sessionCode` 指出损坏会话） |
+
+---
+
 ## 七、目录结构
 
 ```
@@ -317,15 +404,16 @@ curl -s -X POST localhost:8080/api/sessions/1a2b3c4d5e/fork \
 ├── docker-compose.yml
 ├── package.json / package-lock.json
 ├── server/
-│   ├── server.js      # Express 路由（编排 / 发布 / 会话 / 复盘分叉接口）
+│   ├── server.js      # Express 路由（编排 / 发布 / 会话 / 复盘分叉 / 处置覆盖报告接口）
 │   ├── db.js          # SQLite 连接、建表（含老库加列迁移）、id 生成
 │   ├── scenario.js    # 草稿校验 + 状态空间可达性/死路/循环分析
 │   ├── session.js     # 会话快照、“带步号的一步”推进、forkSession 分叉、loadLineage 对照树
+│   ├── coverage.js    # 处置覆盖报告：覆盖项枚举 + 按家族去重的已完成路径回放（损坏整体报错）
 │   └── seed.js        # 内置示例情境（首启写入）
 ├── public/
-│   ├── index.html     # 单页界面（学员演练 / 培训师编排两个页签）
+│   ├── index.html     # 单页界面（学员演练 / 培训师编排两个页签，编排内含处置覆盖报告视图）
 │   ├── styles.css
-│   └── app.js         # 含复盘分叉面板与来源/分支对照树
+│   └── app.js         # 含复盘分叉面板、来源/分支对照树与处置覆盖报告视图
 └── data/              # 运行后生成：SQLite 数据库（持久化卷）
 ```
 

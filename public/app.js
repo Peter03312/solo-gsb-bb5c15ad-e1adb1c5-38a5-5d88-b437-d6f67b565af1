@@ -54,7 +54,13 @@ $$('.tab').forEach((tab) => {
     $('#view-trainee').hidden = which !== 'trainee';
     $('#view-trainer').hidden = which !== 'trainer';
     if (which === 'trainee') { loadPublished(); loadSessionList(); }
-    if (which === 'trainer') loadScenarios();
+    if (which === 'trainer') {
+      coverageCtx = null;
+      $('#trainer-coverage').hidden = true;
+      $('#trainer-editor').hidden = true;
+      $('#trainer-home').hidden = false;
+      loadScenarios();
+    }
   });
 });
 
@@ -444,11 +450,22 @@ async function loadScenarios() {
           : '<span class="badge draft">未发布</span>'}
         会话 ${s.session_count} 个 · 更新于 ${fmtTime(s.updated_at)}
       </div>
-      <div style="margin-top:10px"><span class="btn">编排 / 查看</span></div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <span class="btn">编排 / 查看</span>
+        ${s.current_version > 0
+          ? `<button class="btn" data-coverage="${esc(s.id)}" data-version="${s.current_version}" title="查看已发布版本的处置覆盖情况">📊 处置覆盖报告</button>`
+          : ''}
+      </div>
     </div>`).join('');
 }
 
 $('#scenario-list').addEventListener('click', (e) => {
+  const covBtn = e.target.closest('[data-coverage]');
+  if (covBtn) {
+    e.stopPropagation();
+    openCoverage(covBtn.dataset.coverage, parseInt(covBtn.dataset.version, 10));
+    return;
+  }
   const card = e.target.closest('[data-open]');
   if (card) openEditor(card.dataset.open);
 });
@@ -876,6 +893,134 @@ function renderReport(report, opts = {}) {
         ${p.cycle && p.cycle.length ? `<pre class="cycle">循环段（到达上述节点后重复执行即可永远不到结局）：\n${p.cycle.map(esc).join('\n')}</pre><div class="muted">${esc(p.hint || '')}</div>` : ''}
       </div>`).join('')}
     ${warnings.map((w) => `<div class="warning-item">⚠ ${esc(w.message)}</div>`).join('')}`;
+}
+
+// ====================== 培训师端：处置覆盖报告 ======================
+
+let coverageCtx = null; // { scenarioId, version, uncoveredOnly, data }
+
+$('#btn-coverage-from-editor').addEventListener('click', () => {
+  if (!editing) return;
+  if (editing.currentVersion < 1) return toast('该情境尚未发布，暂无冻结版本可统计', 'err');
+  openCoverage(editing.id, editing.currentVersion);
+});
+
+$('#btn-coverage-back').addEventListener('click', () => {
+  coverageCtx = null;
+  $('#trainer-coverage').hidden = true;
+  $('#trainer-home').hidden = false;
+  loadScenarios();
+});
+
+$('#btn-coverage-reload').addEventListener('click', () => {
+  if (coverageCtx) loadCoverage();
+});
+
+$('#coverage-version').addEventListener('change', (e) => {
+  if (!coverageCtx) return;
+  coverageCtx.version = parseInt(e.target.value, 10);
+  loadCoverage();
+});
+
+$('#coverage-filter-uncovered').addEventListener('change', (e) => {
+  if (!coverageCtx) return;
+  coverageCtx.uncoveredOnly = e.target.checked;
+  loadCoverage();
+});
+
+async function openCoverage(scenarioId, version) {
+  $('#trainer-home').hidden = true;
+  $('#trainer-editor').hidden = true;
+  $('#trainer-coverage').hidden = false;
+  coverageCtx = { scenarioId, version, uncoveredOnly: $('#coverage-filter-uncovered').checked, data: null };
+  try {
+    const detail = await api(`/api/scenarios/${encodeURIComponent(scenarioId)}`);
+    const sel = $('#coverage-version');
+    const versions = (detail.versions || []).slice().sort((a, b) => b.version - a.version);
+    sel.innerHTML = versions.map((v) => `<option value="${v.version}">v${v.version}（${fmtTime(v.created_at)}）</option>`).join('');
+    sel.value = String(version);
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+  await loadCoverage();
+}
+
+async function loadCoverage() {
+  if (!coverageCtx) return;
+  const { scenarioId, version, uncoveredOnly } = coverageCtx;
+  const itemsBox = $('#coverage-items');
+  const summaryBox = $('#coverage-summary');
+  itemsBox.innerHTML = '<div class="muted">统计中…</div>';
+  summaryBox.innerHTML = '';
+  let r;
+  try {
+    const qs = uncoveredOnly ? '?uncovered=1' : '';
+    r = await api(`/api/scenarios/${encodeURIComponent(scenarioId)}/versions/${version}/coverage${qs}`);
+  } catch (err) {
+    coverageCtx.data = null;
+    $('#coverage-title').textContent = '处置覆盖报告';
+    $('#coverage-sub').textContent = '';
+    summaryBox.innerHTML = '';
+    itemsBox.innerHTML = `<div class="report err"><div class="r-title">无法生成覆盖报告（${esc(err.data && err.data.errorCode || 'ERROR')}）</div><div>${esc(err.message)}</div></div>`;
+    return;
+  }
+  coverageCtx.data = r;
+  $('#coverage-title').textContent = `📊 ${r.scenarioTitle} · v${r.version} 处置覆盖报告`;
+  $('#coverage-sub').textContent = `冻结于 ${fmtTime(r.versionPublishedAt)}`;
+
+  const t = r.totals;
+  const pct = t.total ? Math.round((t.covered / t.total) * 1000) / 10 : 0;
+  summaryBox.innerHTML = `
+    <div class="coverage-stat-grid">
+      <div class="cov-stat"><div class="cov-num">${t.total}</div><div class="muted">覆盖项总数</div></div>
+      <div class="cov-stat covered"><div class="cov-num">${t.covered}</div><div class="muted">已覆盖（${pct}%）</div></div>
+      <div class="cov-stat uncovered"><div class="cov-num">${t.uncovered}</div><div class="muted">未覆盖</div></div>
+      <div class="cov-stat"><div class="cov-num">${t.sessionsConsidered}</div><div class="muted">绑定本版本的会话</div></div>
+      <div class="cov-stat"><div class="cov-num">${t.familiesConsidered}</div><div class="muted">演练家族（原始+分支）</div></div>
+    </div>
+    <div class="report ${t.uncovered ? 'warn' : 'ok'}">
+      ${t.uncovered
+        ? `还有 <b>${t.uncovered}</b> 个「节点 × 进入状态 × 选项」组合从未被任何演练家族选到，勾选右上角“只看未覆盖项”可聚焦查漏。`
+        : '所有可达处置组合都已被至少一个演练家族覆盖。'}
+    </div>`;
+  renderCoverageItems(r);
+}
+
+function renderCoverageItems(r) {
+  const box = $('#coverage-items');
+  const items = r.items;
+  if (!items.length) {
+    box.innerHTML = '<div class="muted">没有符合筛选条件的覆盖项。</div>';
+    return;
+  }
+  box.innerHTML = `
+    <table class="cov-table">
+      <thead><tr><th style="width:46px">状态</th><th>进入时现场状态</th><th>节点</th><th>可选选项（处置）</th><th style="width:110px">覆盖家族数</th></tr></thead>
+      <tbody>
+        ${items.map((it) => {
+          const stateName = new Map((it.entryStates || []).map((s) => [s.id, s.name]));
+          return `
+          <tr class="${it.covered ? '' : 'cov-uncovered'}">
+            <td>${it.covered ? '<span class="cov-tag yes">已覆盖</span>' : '<span class="cov-tag no">未覆盖</span>'}</td>
+            <td class="cov-states">${(it.entryStates || []).map((s) =>
+              `<span class="mini-state ${s.value ? 'yes' : 'no'}">${esc(s.name)}=${s.value ? '是' : '否'}</span>`).join(' ')}</td>
+            <td><b>${esc(it.nodeTitle)}</b><div class="muted">${esc(it.nodeId)}</div></td>
+            <td>
+              「${esc(it.option.label)}」<span class="muted">→ ${esc(it.option.toNodeTitle)}</span>
+              ${it.option.conditions && it.option.conditions.length
+                ? `<div class="muted">可选条件：${it.option.conditions.map((c) =>
+                    `${esc(stateName.get(c.stateId) || c.stateId)}=${c.value ? '是' : '否'}`).join('；')}</div>` : ''}
+            </td>
+            <td class="cov-count ${it.coveredFamilies ? 'has' : ''}">
+              <b>${it.coveredFamilies}</b>
+              ${it.familyCodes && it.familyCodes.length
+                ? `<div class="muted" title="贡献覆盖的家族根会话码">${it.familyCodes.slice(0, 3).map((c) => `<code>${esc(c)}</code>`).join(' ')}${it.familyCodes.length > 3 ? ` +${it.familyCodes.length - 3}` : ''}</div>`
+                : '<div class="muted">尚无家族练到</div>'}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
 }
 
 // ====================== 初始化 ======================

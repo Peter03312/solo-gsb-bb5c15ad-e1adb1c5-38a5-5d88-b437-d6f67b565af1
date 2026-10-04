@@ -104,6 +104,31 @@
         <div id="scenario-list" class="card-grid"></div>
       </div>
 
+      <div id="trainer-coverage" hidden>
+        <div class="editor-bar">
+          <button class="btn ghost" id="btn-coverage-back">← 返回情境列表</button>
+          <div class="editor-title-wrap">
+            <div id="coverage-title" style="font-size:16px;font-weight:600"></div>
+            <span class="muted" id="coverage-sub"></span>
+          </div>
+          <div class="editor-actions">
+            <label class="start-pick">冻结版本
+              <select id="coverage-version" class="input sm"></select>
+            </label>
+            <button class="btn" id="btn-coverage-reload">刷新报告</button>
+          </div>
+        </div>
+        <div id="coverage-summary"></div>
+        <div class="card">
+          <div class="card-head">
+            <h4>覆盖项明细（进入时现场状态 × 节点 × 可选选项）</h4>
+            <label class="checkbox"><input type="checkbox" id="coverage-filter-uncovered" /> 只看未覆盖项</label>
+          </div>
+          <p class="hint">统计口径：仅按绑定本冻结版本的会话“已完成选择”统计；同一家族的原始会话与多级分支对同一覆盖项至多计一次（继承前缀不重复累计）；进行中会话只计已完成步骤；其它版本不混入。</p>
+          <div id="coverage-items"></div>
+        </div>
+      </div>
+
       <div id="trainer-editor" hidden>
         <div class="editor-bar">
           <button class="btn ghost" id="btn-back-list">← 返回列表</button>
@@ -113,6 +138,7 @@
           </div>
           <div class="editor-actions">
             <button class="btn" id="btn-analyze">发布前检查</button>
+            <button class="btn" id="btn-coverage-from-editor">处置覆盖报告</button>
             <button class="btn" id="btn-save-draft">保存草稿</button>
             <button class="btn primary" id="btn-publish">发布新版本</button>
           </div>

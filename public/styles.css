@@ -308,6 +308,44 @@ code { background: #eef2f6; padding: 1px 6px; border-radius: 4px; font-size: 12p
 .lg-path summary { cursor: pointer; font-size: 12px; color: var(--brand-dark); }
 .lg-path .path-list { margin-top: 6px; padding-left: 18px; }
 
+/* ---------- 处置覆盖报告 ---------- */
+.coverage-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.cov-stat {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.cov-stat .cov-num { font-size: 24px; font-weight: 700; line-height: 1.2; }
+.cov-stat.covered .cov-num { color: var(--ok); }
+.cov-stat.uncovered .cov-num { color: var(--err); }
+
+.cov-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cov-table th, .cov-table td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.cov-table th { background: #f7f9fc; font-weight: 600; color: var(--muted); font-size: 12px; }
+.cov-table tr.cov-uncovered { background: #fffafa; }
+.cov-table tr.cov-uncovered:hover { background: #fdf2f1; }
+.cov-table tr:hover { background: #f6faff; }
+.cov-tag {
+  display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px;
+  border-radius: 999px; white-space: nowrap;
+}
+.cov-tag.yes { background: var(--ok-bg); color: var(--ok); }
+.cov-tag.no { background: var(--err-bg); color: var(--err); }
+.cov-states { white-space: normal; min-width: 180px; }
+.mini-state {
+  display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 4px;
+  margin: 0 4px 4px 0; background: #eef1f4; color: var(--muted);
+}
+.mini-state.yes { background: var(--ok-bg); color: var(--ok); }
+.cov-count.has b { color: var(--brand-dark); font-size: 15px; }
+.cov-count code { margin: 2px 3px 0 0; display: inline-block; }
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed;

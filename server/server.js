@@ -16,6 +16,7 @@ const {
   decodeKey,
 } = require('./scenario');
 const { buildSnapshot, performMove, forkSession, loadLineage, computeTotalScore } = require('./session');
+const { buildCoverageReport } = require('./coverage');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'app.db');
@@ -396,6 +397,26 @@ app.get('/api/sessions/:code/lineage', (req, res) => {
   const result = loadLineage(db, req.params.code);
   if (!result.ok) return res.status(result.status).json({ error: result.error });
   res.json({ ok: true, rootCode: result.rootCode, requestedCode: result.requestedCode, tree: result.tree });
+});
+
+// ---------- 培训师：处置覆盖报告 ----------
+
+// 针对某个已发布冻结版本：覆盖项 = 从初态可达的（节点 × 进入时现场状态 × 可选选项）。
+// 只按绑定该版本的会话已完成选择统计；同一家族（原始会话与多级分支）对同一覆盖项
+// 至多贡献一次，继承前缀不重复累计；进行中会话只计已完成步骤；其它版本不混入。
+// ?uncovered=1 时 items 只列未覆盖项（totals 仍基于全量统计）。
+// 版本不存在 / 冻结内容损坏 / 会话路径损坏时返回明确错误码，不返回部分统计。
+app.get('/api/scenarios/:id/versions/:version/coverage', (req, res) => {
+  const uncoveredOnly = ['1', 'true', 'yes'].includes(String(req.query.uncovered || '').toLowerCase());
+  const result = buildCoverageReport(db, req.params.id, req.params.version, { uncoveredOnly });
+  if (!result.ok) {
+    return res.status(result.status).json({
+      error: result.error,
+      errorCode: result.errorCode,
+      detail: result.detail,
+    });
+  }
+  res.json(result.report);
 });
 
 // 兜底：未匹配的 /api 返回 JSON 404
